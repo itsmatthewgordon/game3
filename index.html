@@ -8,7 +8,7 @@
     <style>
         body {
             margin: 0; padding: 0;
-            background: #110a05; color: #fff;
+            background: #0b0603; color: #fff;
             font-family: 'Segoe UI', Roboto, Helvetica, sans-serif;
             overflow: hidden; user-select: none; -webkit-user-select: none;
             touch-action: none; display: flex; justify-content: center; align-items: center;
@@ -16,7 +16,7 @@
         }
         #gameContainer {
             position: relative; width: 100%; max-width: 450px; height: 100vh;
-            background: #1a0d04; box-shadow: 0 0 30px rgba(0,0,0,0.8); overflow: hidden;
+            background: #110702; box-shadow: 0 0 30px rgba(0,0,0,0.9); overflow: hidden;
         }
         canvas { display: block; width: 100%; height: 100%; }
         #ui {
@@ -31,7 +31,7 @@
         }
         .screen-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(17, 10, 5, 0.95); z-index: 10;
+            background: rgba(12, 7, 3, 0.96); z-index: 10;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             padding: 30px; box-sizing: border-box; text-align: center;
         }
@@ -45,13 +45,14 @@
         }
         .btn:active { transform: scale(0.95); }
         #rewardInfo {
-            background: rgba(0,0,0,0.4); border: 2px solid #34495e; padding: 15px;
+            background: rgba(0,0,0,0.5); border: 2px solid #34495e; padding: 15px;
             border-radius: 15px; margin-bottom: 25px; width: 80%;
         }
         .wood-count { color: #2ecc71; font-size: 24px; font-weight: 900; display: block; margin-top: 5px; }
         #tapHint {
             position: absolute; bottom: 40px; left: 0; width: 100%; text-align: center;
-            color: rgba(255,255,255,0.4); font-size: 14px; font-weight: 500; pointer-events: none;
+            color: rgba(255,255,255,0.35); font-size: 13px; font-weight: 500; pointer-events: none;
+            text-shadow: 1px 1px 2px #000;
         }
     </style>
 </head>
@@ -63,19 +64,19 @@
         <div id="comboText"></div>
     </div>
     <canvas id="gameCanvas"></canvas>
-    <div id="tapHint">Тапай в любом месте или жми Пробел!</div>
+    <div id="tapHint">Тапай по экрану или жми Пробел, чтобы сбросить брус!</div>
 
     <!-- Главный Экран -->
     <div id="screenOverlay" class="screen-overlay">
-        <h1 id="screenTitle">ВЕЛИКАЯ СТРОЙКА</h1>
-        <p id="screenDesc">Помоги Михалычу возвести Ратушу века! Роняй сосновые брусья ровно друг на друга. Выступающие части с рёвом отпилит циркулярная пила!</p>
+        <h1 id="screenTitle">БАШНЯ МИХАЛЫЧА</h1>
+        <p id="screenDesc">Построй легендарный деревянный небоскрёб Кибер-Деревни! Роняй брусья идеально ровно. За идеальные попадания — сочные бонусы к Казне!</p>
         
         <div id="rewardInfo" style="display:none;">
             <p style="margin:0; color:#bdc3c7;">Высота башни: <span id="finalScore" style="color:#fff; font-weight:bold;">0</span></p>
             <p style="margin:5px 0 0 0; color:#bdc3c7;">Добыто ресурсов: <span id="finalWood" class="wood-count">0 🪵</span></p>
         </div>
         
-        <button id="actionBtn" class="btn" onclick="handleBtnClick()">Раздуть стройку! 🏗️</button>
+        <button id="actionBtn" class="btn" onclick="handleBtnClick()">Начать стройку! 🏗️</button>
     </div>
 </div>
 
@@ -87,11 +88,11 @@
     const ctx = canvas.getContext('2d');
     
     let score = 0; let combo = 0; let gameActive = false;
-    let blocks = []; let fallingSlices = []; let particles = [];
-    let activeBlock = {}; let cameraY = 0; let targetCameraY = 0;
+    let blocks = []; let fallingSlices = []; let particles = []; let clouds = [];
+    let activeBlock = {}; let cameraOffsetY = 0; let targetCameraOffsetY = 0;
     let screenShake = 0; let audioCtx = null;
 
-    const BLOCK_HEIGHT = 35; const BASE_WIDTH = 200;
+    const BLOCK_HEIGHT = 32; const BASE_WIDTH = 180;
 
     function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
 
@@ -101,23 +102,23 @@
             let osc = audioCtx.createOscillator(); let gain = audioCtx.createGain();
             osc.connect(gain); gain.connect(audioCtx.destination);
             if (type === 'perfect') {
-                osc.frequency.setValueAtTime(440, audioCtx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.12);
-                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-                gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
-                osc.start(); osc.stop(audioCtx.currentTime + 0.25);
+                osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // Нота До
+                osc.frequency.exponentialRampToValueAtTime(1046.50, audioCtx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.2);
             } else if (type === 'land') {
-                osc.type = 'triangle'; osc.frequency.setValueAtTime(160, audioCtx.currentTime);
-                osc.frequency.linearRampToValueAtTime(80, audioCtx.currentTime + 0.08);
-                gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
-                gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-                osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(180, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(90, audioCtx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.08);
             } else if (type === 'fail') {
-                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(180, audioCtx.currentTime);
-                osc.frequency.linearRampToValueAtTime(40, audioCtx.currentTime + 0.6);
-                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-                gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
-                osc.start(); osc.stop(audioCtx.currentTime + 0.6);
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(30, audioCtx.currentTime + 0.5);
+                gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.5);
             }
         } catch(e){}
     }
@@ -125,12 +126,22 @@
     function resize() {
         canvas.width = canvas.parentElement.clientWidth;
         canvas.height = canvas.parentElement.clientHeight;
-        if(!gameActive && blocks.length === 0) { drawMenuBackground(); }
+        if (!gameActive && blocks.length === 0) {
+            ctx.fillStyle = '#110702'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
     }
     window.addEventListener('resize', resize);
 
-    function drawMenuBackground() {
-        ctx.fillStyle = '#1a0d04'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    function initClouds() {
+        clouds = [];
+        for (let i = 0; i < 5; i++) {
+            clouds.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * (canvas.height - 300) + 50,
+                width: Math.random() * 50 + 40,
+                speed: Math.random() * 0.3 + 0.1
+            });
+        }
     }
 
     function spawnParticles(x, y, color, count=10) {
@@ -146,16 +157,18 @@
     function startGame() {
         initAudio();
         document.getElementById('screenOverlay').style.display = 'none';
-        score = 0; combo = 0; cameraY = 0; targetCameraY = 0; screenShake = 0;
+        score = 0; combo = 0; cameraOffsetY = 0; targetCameraOffsetY = 0; screenShake = 0;
         fallingSlices = []; particles = [];
         document.getElementById('scoreVal').innerText = score;
         document.getElementById('comboText').innerText = '';
+        
+        initClouds();
 
         blocks = [{
             x: (canvas.width - BASE_WIDTH) / 2,
-            y: canvas.height - BLOCK_HEIGHT - 30,
+            y: canvas.height - BLOCK_HEIGHT - 40,
             width: BASE_WIDTH,
-            color: '#5c3a1a'
+            color: '#4d260d'
         }];
 
         gameActive = true;
@@ -165,7 +178,7 @@
 
     function spawnNextBlock() {
         const topBlock = blocks[blocks.length - 1];
-        let speed = 3.0 + Math.min(5, score * 0.2);
+        let speed = 2.8 + Math.min(5.5, score * 0.22);
         const movingRight = Math.random() > 0.5;
 
         activeBlock = {
@@ -173,11 +186,12 @@
             y: topBlock.y - BLOCK_HEIGHT,
             width: topBlock.width,
             speed: movingRight ? speed : -speed,
-            color: `hsl(${30 + (score * 4) % 20}, ${60 + (score % 2) * 15}%, ${35 + (score % 3) * 5}%)`
+            color: `hsl(${25 + (score * 5) % 25}, ${65 + (score % 2) * 10}%, ${38 + (score % 3) * 4}%)`
         };
 
-        if (activeBlock.y < canvas.height * 0.55) {
-            targetCameraY = canvas.height * 0.55 - activeBlock.y;
+        // Логика слежения: активный блок всегда удерживается на уровне 40% от верха экрана
+        if (activeBlock.y < canvas.height * 0.45) {
+            targetCameraOffsetY = canvas.height * 0.45 - activeBlock.y;
         }
     }
 
@@ -187,26 +201,25 @@
         const topBlock = blocks[blocks.length - 1];
         const diff = activeBlock.x - topBlock.x;
 
-        // Фикс идеальной зоны ловли (Perfect!)
-        if (Math.abs(diff) <= 8) {
+        // Зона идеального комбо
+        if (Math.abs(diff) <= 7) {
             activeBlock.x = topBlock.x; 
             combo++;
             screenShake = 6;
             playSound('perfect');
-            document.getElementById('comboText').innerText = `🔥 ИДЕАЛЬНО! x${combo}`;
-            spawnParticles(activeBlock.x + activeBlock.width/2, activeBlock.y + BLOCK_HEIGHT, '#f1c40f', 20);
+            document.getElementById('comboText').innerText = `🔥 PERFECT! x${combo}`;
+            spawnParticles(activeBlock.x + activeBlock.width/2, activeBlock.y + BLOCK_HEIGHT, '#f1c40f', 18);
         } else {
             combo = 0;
             screenShake = 3;
             document.getElementById('comboText').innerText = '';
             playSound('land');
 
-            // Расчет физического отпила
             let sliceX, sliceWidth;
-            if (diff < 0) { // Отпил слева
+            if (diff < 0) { 
                 sliceX = activeBlock.x; sliceWidth = topBlock.x - activeBlock.x;
                 activeBlock.width += diff; activeBlock.x = topBlock.x;
-            } else { // Отпил справа
+            } else { 
                 sliceX = topBlock.x + topBlock.width; sliceWidth = diff;
                 activeBlock.width -= diff;
             }
@@ -214,14 +227,13 @@
             if (activeBlock.width > 0) {
                 fallingSlices.push({
                     x: sliceX, y: activeBlock.y, width: sliceWidth, height: BLOCK_HEIGHT,
-                    vx: diff < 0 ? -2 : 2, vy: -1, angle: 0, rotSpeed: (Math.random() - 0.5) * 0.2,
+                    vx: diff < 0 ? -2.5 : 2.5, vy: -1.5, angle: 0, rotSpeed: (Math.random() - 0.5) * 0.25,
                     color: activeBlock.color
                 });
-                spawnParticles(sliceX + sliceWidth/2, activeBlock.y + BLOCK_HEIGHT/2, '#cd853f', 12);
+                spawnParticles(sliceX + sliceWidth/2, activeBlock.y + BLOCK_HEIGHT/2, '#b37446', 10);
             }
         }
 
-        // Крах строения
         if (activeBlock.width <= 0) {
             endGame();
             return;
@@ -237,15 +249,13 @@
     }
 
     function endGame() {
-        gameActive = false; playSound('fail'); screenShake = 15;
-        
-        // Массивный взрыв остатков последнего бруса
-        spawnParticles(activeBlock.x + activeBlock.width/2, activeBlock.y, activeBlock.color, 35);
+        gameActive = false; playSound('fail'); screenShake = 12;
+        spawnParticles(activeBlock.x + activeBlock.width/2, activeBlock.y + BLOCK_HEIGHT/2, activeBlock.color, 30);
 
         const totalWood = Math.min(100, score * 4);
 
-        document.getElementById('screenTitle').innerText = "СТРОЙКА РУХНУЛА! 💥";
-        document.getElementById('screenDesc').innerText = "Конструкция Михалыча потеряла баланс. Логистика Деревни подсчитывает убытки.";
+        document.getElementById('screenTitle').innerText = "СТРОЙКА ЗАВЕРШЕНА! 🪓";
+        document.getElementById('screenDesc').innerText = "Башня Михалыча потеряла точку опоры. Конструкция утилизирована на дрова.";
         document.getElementById('finalScore').innerText = score;
         document.getElementById('finalWood').innerText = totalWood + " 🪵";
         document.getElementById('rewardInfo').style.display = 'block';
@@ -256,10 +266,10 @@
 
     function handleBtnClick() {
         const btnText = document.getElementById('actionBtn').innerText;
-        if (btnText.includes("ЗАБРАТЬ") || btnText.includes("ОТПРАВИТЬ")) {
+        if (btnText.includes("ЗАБРАТЬ") || btnText.includes("дрова")) {
             if (tg) { tg.sendData("tower_score:" + score); tg.close(); } 
             else { 
-                alert("WebApp Тест: Ушло в бот tower_score:" + score); 
+                alert("WebApp Тест: Счёт отправлен в бот tower_score:" + score); 
                 document.getElementById('rewardInfo').style.display = 'none';
                 document.getElementById('actionBtn').innerText = "Раздуть стройку! 🏗️";
             }
@@ -268,7 +278,6 @@
         }
     }
 
-    // Обработчики ввода
     window.addEventListener('touchstart', (e) => {
         if(e.target.classList.contains('btn')) return;
         e.preventDefault(); handleTap();
@@ -286,73 +295,112 @@
     function gameLoop() {
         if (!gameActive && fallingSlices.length === 0 && particles.length === 0) return;
 
-        // Камера плавно догоняет вершину башни
-        cameraY += (targetCameraY - cameraY) * 0.1;
+        // Плавное интерполирование позиции камеры (Никаких подергиваний)
+        cameraOffsetY += (targetCameraOffsetY - cameraOffsetY) * 0.09;
 
         ctx.save();
-        // Рендер тряски экрана
         if (screenShake > 0) {
-            let dx = (Math.random() - 0.5) * screenShake; let dy = (Math.random() - 0.5) * screenShake;
-            ctx.translate(dx, dy); screenShake *= 0.8;
-            if(screenShake < 0.5) screenShake = 0;
+            ctx.translate((Math.random() - 0.5) * screenShake, (Math.random() - 0.5) * screenShake);
+            screenShake *= 0.82; if(screenShake < 0.2) screenShake = 0;
         }
 
-        // 1. Отрисовка динамического неба Кибер-Деревни
-        let h1 = Math.max(10, 35 - score * 0.6);
-        let h2 = Math.max(5, 15 - score * 0.4);
+        // 1. Динамический фон неба (Зависит от высоты здания)
+        let skyH1 = Math.max(3, 30 - score * 0.7);
+        let skyH2 = Math.max(1, 12 - score * 0.5);
         let gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-        gradient.addColorStop(0, `hsl(210, 40%, ${h2}%)`);
-        gradient.addColorStop(1, `hsl(25, 50%, ${h1}%)`);
+        gradient.addColorStop(0, `hsl(215, 45%, ${skyH2}%)`);
+        gradient.addColorStop(1, `hsl(28, 55%, ${skyH1}%)`);
         ctx.fillStyle = gradient; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Космические звёзды на большой высоте
-        if (score > 15) {
-            ctx.fillStyle = 'rgba(255,255,255,0.4)';
-            for(let i=0; i<20; i++) {
-                let sx = (Math.sin(i * 333) * 0.5 + 0.5) * canvas.width;
-                let sy = ((Math.cos(i * 777) * 0.5 + 0.5) * canvas.height + cameraY * 0.3) % canvas.height;
-                ctx.fillRect(sx, sy, 2, 2);
+        // Отрисовка звезд и Неоновой Луны на высоте
+        if (score >= 10) {
+            ctx.fillStyle = 'rgba(255,255,255,0.35)';
+            for(let i=0; i<25; i++) {
+                let sx = (Math.sin(i * 452) * 0.5 + 0.5) * canvas.width;
+                let sy = ((Math.cos(i * 862) * 0.5 + 0.5) * canvas.height + cameraOffsetY * 0.2) % canvas.height;
+                ctx.fillRect(sx, sy, 1.8, 1.8);
             }
         }
+        if (score >= 18) {
+            ctx.save();
+            ctx.shadowBlur = 20; ctx.shadowColor = 'rgba(56, 189, 248, 0.4)';
+            ctx.fillStyle = 'rgba(241, 245, 249, 0.8)';
+            ctx.beginPath();
+            ctx.arc(canvas.width - 70, 110 + cameraOffsetY * 0.1, 25, 0, Math.PI * 2);
+            ctx.fill(); ctx.restore();
+        }
 
-        // 2. Рендер установленной башни
-        blocks.forEach((b, index) => {
-            if (b.y - cameraY > canvas.height) return;
-            ctx.fillStyle = b.color;
-            ctx.fillRect(b.x, b.y - cameraY, b.width, BLOCK_HEIGHT);
-
-            // Текстурный узор коры
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
-            ctx.fillRect(b.x, b.y - cameraY + BLOCK_HEIGHT - 6, b.width, 6);
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-            ctx.fillRect(b.x, b.y - cameraY, b.width, 5);
+        // 2. Параллакс Облака
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.07)';
+        clouds.forEach(c => {
+            if (gameActive) c.x += c.speed;
+            if (c.x > canvas.width + 60) c.x = -60;
+            let renderCloudY = c.y + cameraOffsetY * 0.35; // Эффект глубины
+            if (renderCloudY < canvas.height + 50 && renderCloudY > -50) {
+                ctx.beginPath();
+                ctx.arc(c.x, renderCloudY, c.width * 0.4, 0, Math.PI * 2);
+                ctx.arc(c.x + c.width * 0.3, renderCloudY - c.width * 0.2, c.width * 0.45, 0, Math.PI * 2);
+                ctx.arc(c.x + c.width * 0.6, renderCloudY, c.width * 0.35, 0, Math.PI * 2);
+                ctx.fill();
+            }
         });
 
-        // 3. Обновление и рендер падающих щепок (Отпилы)
+        // 3. Параллакс Лесной Бор (Силуэт леса внизу)
+        let forestGroundY = canvas.height - 40 + cameraOffsetY;
+        if (forestGroundY > -100) {
+            ctx.fillStyle = '#0a140b';
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height);
+            for (let x = 0; x <= canvas.width + 20; x += 16) {
+                let treeH = 35 + Math.sin(x * 0.06) * 12;
+                ctx.lineTo(x, forestGroundY - treeH);
+                ctx.lineTo(x + 8, forestGroundY - treeH - 14);
+                ctx.lineTo(x + 16, forestGroundY);
+            }
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.fill();
+        }
+
+        // 4. Отрисовка построенных этажей башни
+        blocks.forEach((b, idx) => {
+            let renderB_Y = b.y + cameraOffsetY;
+            if (renderB_Y > canvas.height + 50 || renderB_Y < -50) return;
+
+            ctx.fillStyle = b.color;
+            ctx.fillRect(b.x, renderB_Y, b.width, BLOCK_HEIGHT);
+
+            // Стилизованные тени и фаски для объема бревна
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+            ctx.fillRect(b.x, renderB_Y + BLOCK_HEIGHT - 6, b.width, 6);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.fillRect(b.x, renderB_Y, b.width, 4);
+        });
+
+        // 5. Отрисовка падающих кусков древесины (Срезы пилы)
         for(let i = fallingSlices.length - 1; i >= 0; i--) {
             let s = fallingSlices[i];
-            s.x += s.vx; s.vy += 0.3; s.y += s.vy; s.angle += s.rotSpeed;
+            s.x += s.vx; s.vy += 0.35; s.y += s.vy; s.angle += s.rotSpeed;
             
             ctx.save();
-            ctx.translate(s.x + s.width/2, s.y + s.height/2 - cameraY);
+            ctx.translate(s.x + s.width/2, s.y + s.height/2 + cameraOffsetY);
             ctx.rotate(s.angle);
             ctx.fillStyle = s.color;
             ctx.fillRect(-s.width/2, -s.height/2, s.width, s.height);
             ctx.restore();
 
-            if(s.y - cameraY > canvas.height) fallingSlices.splice(i, 1);
+            if (s.y + cameraOffsetY > canvas.height + 50) fallingSlices.splice(i, 1);
         }
 
-        // 4. Частицы/Искры
+        // 6. Эффекты частиц (Щепки)
         for(let i = particles.length - 1; i >= 0; i--) {
             let p = particles[i];
-            p.x += p.vx; p.vy += 0.15; p.y += p.vy; p.alpha -= 0.02;
+            p.x += p.vx; p.vy += 0.18; p.y += p.vy; p.alpha -= 0.022;
             if(p.alpha <= 0) { particles.splice(i, 1); continue; }
             ctx.save(); ctx.globalAlpha = p.alpha; ctx.fillStyle = p.color;
-            ctx.fillRect(p.x, p.y - cameraY, p.size, p.size); ctx.restore();
+            ctx.fillRect(p.x, p.y + cameraOffsetY, p.size, p.size); ctx.restore();
         }
 
-        // 5. Движение активного летящего бруса
+        // 7. Летящий активный брус
         if (gameActive) {
             activeBlock.x += activeBlock.speed;
             if (activeBlock.speed > 0 && activeBlock.x + activeBlock.width >= canvas.width) {
@@ -360,21 +408,21 @@
             } else if (activeBlock.speed < 0 && activeBlock.x <= 0) {
                 activeBlock.speed = -activeBlock.speed; activeBlock.x = 0;
             }
-            ctx.fillStyle = activeBlock.color;
-            ctx.fillRect(activeBlock.x, activeBlock.y - cameraY, activeBlock.width, BLOCK_HEIGHT);
             
-            // Текстура на летящем блоке
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
-            ctx.fillRect(activeBlock.x, activeBlock.y - cameraY + BLOCK_HEIGHT - 6, activeBlock.width, 6);
+            let renderActiveY = activeBlock.y + cameraOffsetY;
+            ctx.fillStyle = activeBlock.color;
+            ctx.fillRect(activeBlock.x, renderActiveY, activeBlock.width, BLOCK_HEIGHT);
+            
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+            ctx.fillRect(activeBlock.x, renderActiveY + BLOCK_HEIGHT - 6, activeBlock.width, 6);
             ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-            ctx.fillRect(activeBlock.x, activeBlock.y - cameraY, activeBlock.width, 5);
+            ctx.fillRect(activeBlock.x, renderActiveY, activeBlock.width, 4);
         }
 
         ctx.restore();
         requestAnimationFrame(gameLoop);
     }
 
-    // Первичный запуск
     resize();
 </script>
 </body>
