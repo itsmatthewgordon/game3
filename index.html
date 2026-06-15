@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Башня Михалыча - Habit Village</title>
+    <!-- Подключаем Telegram WebApp API -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #2c1a10;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas {
+            background: linear-gradient(to bottom, #1a0d00, #3d2314);
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            max-width: 100%;
+            max-height: 100%;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px #000;
+            pointer-events: none;
+            width: 100%;
+        }
+        #comboText {
+            color: #ffcc00;
+            font-size: 18px;
+            height: 20px;
+            margin-top: 5px;
+            transition: all 0.2s ease;
+        }
+        #screenOverlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .btn {
+            background: #8b5a2b;
+            color: white;
+            border: 2px solid #cd853f;
+            padding: 12px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 20px;
+            box-shadow: 0 4px 0 #5c3a1a;
+        }
+        .btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 0px 0 #5c3a1a;
+        }
+        h1 { color: #cd853f; margin-bottom: 10px; font-size: 28px; text-shadow: 2px 2px #000; }
+        p { font-size: 16px; margin: 5px 0; color: #dfbfa7; }
+        .wood-count { color: #00ffcc; font-size: 22px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="gameContainer">
+    <div id="ui">
+        <div>🧱 ЭТАЖИ: <span id="scoreVal">0</span></div>
+        <div id="comboText"></div>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Стартовый / Финальный экран -->
+    <div id="screenOverlay">
+        <h1 id="screenTitle">СТРОЙКА МИХАЛЫЧА</h1>
+        <p id="screenDesc">Постройте самую высокую башню из соснового бруса! Складывайте блоки ровно. Кривые выступы отпилит циркулярная пила!</p>
+        <div id="rewardInfo" style="display:none; margin-top:15px;">
+            <p>🏆 Результат: <span id="finalScore" style="color:#fff; font-weight:bold;">0</span> этажей</p>
+            <p>🪵 Заработано для Ратуши: <span id="finalWood" class="wood-count">0 🪵</span></p>
+        </div>
+        <button id="actionBtn" class="btn" onclick="startGame()">НАЧАТЬ СТРОЙКУ</button>
+    </div>
+</div>
+
+<script>
+    // Инициализация Telegram WebApp
+    const tg = window.Telegram ? window.Telegram.WebApp : null;
+    if (tg) {
+        tg.ready();
+        tg.expand();
+    }
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Настройки адаптивности под мобилки
+    const WIDTH = 360;
+    const HEIGHT = 540;
+    canvas.width = WIDTH;
+    canvas.height = HEIGHT;
+
+    // Геймплейные константы
+    const BLOCK_HEIGHT = 28;
+    const BASE_WIDTH = 180;
+    const CAMERA_SPEED = 0.1;
+
+    let score = 0;
+    let combo = 0;
+    let gameActive = false;
+    let blocks = [];
+    let currentBlock = {};
+    let cameraY = 0;
+    let targetCameraY = 0;
+    let particles = [];
+
+    // Цвета древесины (для эффекта чередования этажей)
+    const woodColors = ['#8B5A2B', '#A0522D', '#CD853F', '#DEB887', '#B8860B'];
+
+    class Particle {
+        constructor(x, y, w, color) {
+            this.x = x + Math.random() * w;
+            this.y = y;
+            this.vx = (Math.random() - 0.5) * 4;
+            this.vy = -Math.random() * 3 - 2;
+            this.alpha = 1;
+            this.color = color;
+            this.size = Math.random() * 4 + 2;
+        }
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+            this.vy += 0.2; // Гравитация
+            this.alpha -= 0.02;
+        }
+        draw() {
+            ctx.save();
+            ctx.globalAlpha = this.alpha;
+            ctx.fillStyle = this.color;
+            ctx.fillRect(this.x, this.y - cameraY, this.size, this.size);
+            ctx.restore();
+        }
+    }
+
+    function initGame() {
+        score = 0;
+        combo = 0;
+        cameraY = 0;
+        targetCameraY = 0;
+        particles = [];
+        document.getElementById('scoreVal').innerText = score;
+        document.getElementById('comboText').innerText = '';
+
+        // Базовый блок (фундамент)
+        blocks = [{
+            x: (WIDTH - BASE_WIDTH) / 2,
+            y: HEIGHT - BLOCK_HEIGHT - 10,
+            width: BASE_WIDTH,
+            color: '#5c3a1a'
+        }];
+
+        spawnBlock();
+    }
+
+    function spawnBlock() {
+        const prevBlock = blocks[blocks.length - 1];
+        const index = blocks.length;
+        
+        // Скорость растет с высотой башни
+        let speed = 2.5 + Math.min(4, score * 0.15);
+        if (Math.random() > 0.5) speed = -speed;
+
+        currentBlock = {
+            x: speed > 0 ? -prevBlock.width : WIDTH,
+            y: prevBlock.y - BLOCK_HEIGHT,
+            width: prevBlock.width,
+            speed: speed,
+            color: woodColors[index % woodColors.length]
+        };
+
+        // Двигаем камеру вверх, если башня выше середины экрана
+        if (currentBlock.y < HEIGHT / 2) {
+            targetCameraY = HEIGHT / 2 - currentBlock.y;
+        }
+    }
+
+    function startGame() {
+        document.getElementById('screenOverlay').style.display = 'none';
+        initGame();
+        gameActive = true;
+        animate();
+    }
+
+    function handleDrop() {
+        if (!gameActive) return;
+
+        const prevBlock = blocks[blocks.length - 1];
+        const diff = currentBlock.x - prevBlock.x;
+
+        // Допуск на "идеальное попадание" (Perfect!)
+        if (Math.abs(diff) < 6) {
+            currentBlock.x = prevBlock.x; // Выравниваем идеально
+            combo++;
+            let bonusText = `🔥 ИДЕАЛЬНО! x${combo}`;
+            document.getElementById('comboText').innerText = bonusText;
+            document.getElementById('comboText').style.transform = 'scale(1.2)';
+            setTimeout(() => document.getElementById('comboText').style.transform = 'scale(1)', 150);
+            
+            // Вспышка опилок во все стороны
+            for(let i=0; i<15; i++) particles.push(new Particle(currentBlock.x, currentBlock.y, currentBlock.width, '#ffcc00'));
+        } else {
+            combo = 0;
+            document.getElementById('comboText').innerText = '';
+            
+            // Генерируем опилки на месте отпила
+            const chipX = diff > 0 ? currentBlock.x + currentBlock.width - diff : currentBlock.x;
+            for(let i=0; i<10; i++) particles.push(new Particle(chipX, currentBlock.y, Math.abs(diff), '#cd853f'));
+        }
+
+        // Расчет краев и отпиливание куска
+        if (currentBlock.x < prevBlock.x) {
+            // Сдвиг влево
+            currentBlock.width += diff;
+            currentBlock.x = prevBlock.x;
+        } else {
+            // Сдвиг вправо
+            currentBlock.width -= diff;
+        }
+
+        // Проверка на промах (Game Over)
+        if (currentBlock.width <= 0) {
+            gameOver();
+            return;
+        }
+
+        // Блок успешно зафиксирован!
+        blocks.push({
+            x: currentBlock.x,
+            y: currentBlock.y,
+            width: currentBlock.width,
+            color: currentBlock.color
+        });
+
+        score++;
+        document.getElementById('scoreVal').innerText = score;
+
+        spawnBlock();
+    }
+
+    function gameOver() {
+        gameActive = false;
+        
+        // Математика Деревни: 1 этаж = 4 бревна, максимум 100 дров (25 этажей)
+        const totalWood = Math.min(100, score * 4);
+
+        document.getElementById('screenTitle').innerText = "СТРОЙКА ЗАВЕРШЕНА! 🪓";
+        document.getElementById('screenDesc').innerText = "Твоя башня рухнула из-за законов физики и косоглазия рабочих Михалыча.";
+        document.getElementById('finalScore').innerText = score;
+        document.getElementById('finalWood').innerText = totalWood + " 🪵";
+        document.getElementById('rewardInfo').style.display = 'block';
+        document.getElementById('actionBtn').innerText = "ОТПРАВИТЬ РЕЗУЛЬТАТ";
+        
+        // Меняем событие кнопки для отправки данных в бота
+        document.getElementById('actionBtn').onclick = function() {
+            if (tg) {
+                tg.sendData("tower_score:" + score);
+            } else {
+                alert("Лог отладки (WebApp): отправлен счёт " + score + " (" + totalWood + " 🪵)");
+                // Возвращаем кнопку на старт, если тестируем в обычном браузере
+                document.getElementById('rewardInfo').style.display = 'none';
+                document.getElementById('actionBtn').innerText = "НАЧАТЬ СТРОЙКУ";
+                document.getElementById('actionBtn').onclick = startGame;
+            }
+        };
+
+        document.getElementById('screenOverlay').style.display = 'flex';
+    }
+
+    // Слушатели кликов и тапов
+    window.addEventListener('touchstart', (e) => {
+        if(e.target.tagName !== 'BUTTON') { e.preventDefault(); handleDrop(); }
+    }, {passive: false});
+
+    window.addEventListener('mousedown', (e) => {
+        if(e.target.tagName !== 'BUTTON') handleDrop();
+    });
+
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') { e.preventDefault(); handleDrop(); }
+    });
+
+    // Главный игровой цикл анимации
+    function animate() {
+        if (!gameActive) return;
+
+        // Плавное движение камеры вслед за башней
+        cameraY += (targetCameraY - cameraY) * CAMERA_SPEED;
+
+        // Очистка экрана
+        ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+        // Рисуем сетку фона (задний план кибер-леса)
+        ctx.fillStyle = 'rgba(255,255,255,0.02)';
+        for(let i=0; i<HEIGHT; i+=40) ctx.fillRect(0, i + (cameraY % 40), WIDTH, 1);
+
+        // Обновление и отрисовка летящих опилок
+        particles.forEach((p, index) => {
+            p.update();
+            p.draw();
+            if (p.alpha <= 0) particles.splice(index, 1);
+        });
+
+        // Рисуем все установленные блоки башни
+        blocks.forEach(b => {
+            ctx.fillStyle = b.color;
+            ctx.fillRect(b.x, b.y - cameraY, b.width, BLOCK_HEIGHT);
+            
+            // Тень/Текстура коры дерева на блоке
+            ctx.fillStyle = 'rgba(0,0,0,0.15)';
+            ctx.fillRect(b.x, b.y - cameraY + BLOCK_HEIGHT - 6, b.width, 6);
+            ctx.fillStyle = 'rgba(255,255,255,0.1)';
+            ctx.fillRect(b.x, b.y - cameraY, b.width, 4);
+        });
+
+        // Двигаем и рисуем текущий летящий блок
+        currentBlock.x += currentBlock.speed;
+        if (currentBlock.x + currentBlock.width > WIDTH || currentBlock.x < 0) {
+            currentBlock.speed = -currentBlock.speed; // Отскок от краев экрана
+        }
+
+        ctx.fillStyle = currentBlock.color;
+        ctx.fillRect(currentBlock.x, currentBlock.y - cameraY, currentBlock.width, BLOCK_HEIGHT);
+        
+        // Текстура на летящем блоке
+        ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        ctx.fillRect(currentBlock.x, currentBlock.y - cameraY + BLOCK_HEIGHT - 6, currentBlock.width, 6);
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fillRect(currentBlock.x, currentBlock.y - cameraY, currentBlock.width, 4);
+
+        requestAnimationFrame(animate);
+    }
+</script>
+</body>
+</html>
