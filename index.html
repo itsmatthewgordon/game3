@@ -33,10 +33,10 @@
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(12, 7, 3, 0.96); z-index: 10;
             display: flex; flex-direction: column; justify-content: center; align-items: center;
-            padding: 30px; box-sizing: border-box; text-align: center;
+            padding: 20px; box-sizing: border-box; text-align: center;
         }
-        h1 { color: #e67e22; font-size: 32px; font-weight: 900; margin-bottom: 10px; text-shadow: 0 0 10px rgba(230,126,34,0.3); }
-        p { color: #cd9b74; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0; }
+        h1 { color: #e67e22; font-size: 32px; font-weight: 900; margin-bottom: 5px; text-shadow: 0 0 10px rgba(230,126,34,0.3); }
+        p { color: #cd9b74; font-size: 14px; line-height: 1.5; margin: 0 0 15px 0; }
         .btn {
             background: linear-gradient(135deg, #d35400, #e67e22); color: white;
             border: none; padding: 14px 35px; font-size: 16px; font-weight: bold;
@@ -46,7 +46,7 @@
         .btn:active { transform: scale(0.95); }
         #rewardInfo {
             background: rgba(0,0,0,0.5); border: 2px solid #34495e; padding: 15px;
-            border-radius: 15px; margin-bottom: 25px; width: 80%;
+            border-radius: 15px; margin-bottom: 25px; width: 85%; box-sizing: border-box;
         }
         .wood-count { color: #2ecc71; font-size: 24px; font-weight: 900; display: block; margin-top: 5px; }
         #tapHint {
@@ -54,6 +54,25 @@
             color: rgba(255,255,255,0.35); font-size: 13px; font-weight: 500; pointer-events: none;
             text-shadow: 1px 1px 2px #000;
         }
+        
+        /* СТИЛИ ДЛЯ ТАБЛИЦЫ ЛИДЕРОВ БАШНИ */
+        .leaderboard-box {
+            background: rgba(26, 14, 7, 0.85); border: 1px solid #d35400;
+            border-radius: 12px; padding: 12px 15px; margin-bottom: 20px;
+            width: 85%; box-sizing: border-box;
+        }
+        .leaderboard-title {
+            font-size: 13px; font-weight: bold; color: #e67e22;
+            margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;
+        }
+        .leaderboard-row {
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 14px; margin: 5px 0; color: #cd9b74;
+            border-bottom: 1px solid rgba(211,84,0,0.1); padding-bottom: 3px;
+        }
+        .leaderboard-row:last-child { border-bottom: none; }
+        .leader-name { font-weight: bold; color: #fff; margin-left: 5px; }
+        .leader-score { color: #f1c40f; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -71,6 +90,12 @@
         <h1 id="screenTitle">БАШНЯ МИХАЛЫЧА</h1>
         <p id="screenDesc">Построй легендарный деревянный небоскрёб Кибер-Деревни! Роняй брусья идеально ровно. За идеальные попадания — сочные бонусы к Казне!</p>
         
+        <!-- Блок Глобального Топа -->
+        <div id="leaderboardContainer" class="leaderboard-box" style="display:none;">
+            <div class="leaderboard-title">🏆 ТОП-5 АРХИТЕКТОРОВ БАШНИ 🏆</div>
+            <div id="leaderboardList"></div>
+        </div>
+
         <div id="rewardInfo" style="display:none;">
             <p style="margin:0; color:#bdc3c7;">Высота башни: <span id="finalScore" style="color:#fff; font-weight:bold;">0</span></p>
             <p style="margin:5px 0 0 0; color:#bdc3c7;">Добыто ресурсов: <span id="finalWood" class="wood-count">0 🪵</span></p>
@@ -154,6 +179,32 @@
         }
     }
 
+    // ФУНКЦИЯ ДЛЯ ПАРСИНГА И ВЫВОДА ТАБЛИЦЫ ЛИДЕРОВ
+    function loadLeaderboard() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const topData = urlParams.get('top');
+        const container = document.getElementById('leaderboardContainer');
+        const list = document.getElementById('leaderboardList');
+        
+        if (topData && topData.trim() !== "") {
+            list.innerHTML = "";
+            const leaders = topData.split(',');
+            leaders.forEach((leader, index) => {
+                const [username, lScore] = leader.split('-');
+                if (username && lScore) {
+                    let medal = index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `📜 ${index + 1}.`;
+                    const row = document.createElement('div');
+                    row.className = 'leaderboard-row';
+                    row.innerHTML = `<span>${medal}<span class="leader-name">${username}</span></span><span class="leader-score">${lScore} эт.</span>`;
+                    list.appendChild(row);
+                }
+            });
+            container.style.display = 'block';
+        } else {
+            container.style.display = 'none';
+        }
+    }
+
     function startGame() {
         initAudio();
         document.getElementById('screenOverlay').style.display = 'none';
@@ -189,7 +240,6 @@
             color: `hsl(${25 + (score * 5) % 25}, ${65 + (score % 2) * 10}%, ${38 + (score % 3) * 4}%)`
         };
 
-        // Логика слежения: активный блок всегда удерживается на уровне 40% от верха экрана
         if (activeBlock.y < canvas.height * 0.45) {
             targetCameraOffsetY = canvas.height * 0.45 - activeBlock.y;
         }
@@ -201,7 +251,6 @@
         const topBlock = blocks[blocks.length - 1];
         const diff = activeBlock.x - topBlock.x;
 
-        // Зона идеального комбо
         if (Math.abs(diff) <= 7) {
             activeBlock.x = topBlock.x; 
             combo++;
@@ -252,12 +301,16 @@
         gameActive = false; playSound('fail'); screenShake = 12;
         spawnParticles(activeBlock.x + activeBlock.width/2, activeBlock.y + BLOCK_HEIGHT/2, activeBlock.color, 30);
 
-        const totalWood = Math.min(100, score * 4);
+        // ПОТОЛОК ЗАРЕЗАН ПОД КОРЕНЬ: Чистый безлимитный доход
+        const totalWood = score * 4;
 
         document.getElementById('screenTitle').innerText = "СТРОЙКА ЗАВЕРШЕНА! 🪓";
         document.getElementById('screenDesc').innerText = "Башня Михалыча потеряла точку опоры. Конструкция утилизирована на дрова.";
         document.getElementById('finalScore').innerText = score;
         document.getElementById('finalWood').innerText = totalWood + " 🪵";
+        
+        // Скрываем топ, чтобы не перегружать интерфейс финала
+        document.getElementById('leaderboardContainer').style.display = 'none';
         document.getElementById('rewardInfo').style.display = 'block';
         document.getElementById('actionBtn').innerText = "Забрать дрова 🪵";
 
@@ -271,6 +324,7 @@
             else { 
                 alert("WebApp Тест: Счёт отправлен в бот tower_score:" + score); 
                 document.getElementById('rewardInfo').style.display = 'none';
+                loadLeaderboard(); // Возвращаем топ обратно после ручного теста
                 document.getElementById('actionBtn').innerText = "Раздуть стройку! 🏗️";
             }
         } else {
@@ -295,7 +349,6 @@
     function gameLoop() {
         if (!gameActive && fallingSlices.length === 0 && particles.length === 0) return;
 
-        // Плавное интерполирование позиции камеры (Никаких подергиваний)
         cameraOffsetY += (targetCameraOffsetY - cameraOffsetY) * 0.09;
 
         ctx.save();
@@ -304,7 +357,6 @@
             screenShake *= 0.82; if(screenShake < 0.2) screenShake = 0;
         }
 
-        // 1. Динамический фон неба (Зависит от высоты здания)
         let skyH1 = Math.max(3, 30 - score * 0.7);
         let skyH2 = Math.max(1, 12 - score * 0.5);
         let gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
@@ -312,7 +364,6 @@
         gradient.addColorStop(1, `hsl(28, 55%, ${skyH1}%)`);
         ctx.fillStyle = gradient; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Отрисовка звезд и Неоновой Луны на высоте
         if (score >= 10) {
             ctx.fillStyle = 'rgba(255,255,255,0.35)';
             for(let i=0; i<25; i++) {
@@ -330,12 +381,11 @@
             ctx.fill(); ctx.restore();
         }
 
-        // 2. Параллакс Облака
         ctx.fillStyle = 'rgba(255, 255, 255, 0.07)';
         clouds.forEach(c => {
             if (gameActive) c.x += c.speed;
             if (c.x > canvas.width + 60) c.x = -60;
-            let renderCloudY = c.y + cameraOffsetY * 0.35; // Эффект глубины
+            let renderCloudY = c.y + cameraOffsetY * 0.35;
             if (renderCloudY < canvas.height + 50 && renderCloudY > -50) {
                 ctx.beginPath();
                 ctx.arc(c.x, renderCloudY, c.width * 0.4, 0, Math.PI * 2);
@@ -345,7 +395,6 @@
             }
         });
 
-        // 3. Параллакс Лесной Бор (Силуэт леса внизу)
         let forestGroundY = canvas.height - 40 + cameraOffsetY;
         if (forestGroundY > -100) {
             ctx.fillStyle = '#0a140b';
@@ -361,7 +410,6 @@
             ctx.fill();
         }
 
-        // 4. Отрисовка построенных этажей башни
         blocks.forEach((b, idx) => {
             let renderB_Y = b.y + cameraOffsetY;
             if (renderB_Y > canvas.height + 50 || renderB_Y < -50) return;
@@ -369,14 +417,12 @@
             ctx.fillStyle = b.color;
             ctx.fillRect(b.x, renderB_Y, b.width, BLOCK_HEIGHT);
 
-            // Стилизованные тени и фаски для объема бревна
             ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
             ctx.fillRect(b.x, renderB_Y + BLOCK_HEIGHT - 6, b.width, 6);
             ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
             ctx.fillRect(b.x, renderB_Y, b.width, 4);
         });
 
-        // 5. Отрисовка падающих кусков древесины (Срезы пилы)
         for(let i = fallingSlices.length - 1; i >= 0; i--) {
             let s = fallingSlices[i];
             s.x += s.vx; s.vy += 0.35; s.y += s.vy; s.angle += s.rotSpeed;
@@ -391,7 +437,6 @@
             if (s.y + cameraOffsetY > canvas.height + 50) fallingSlices.splice(i, 1);
         }
 
-        // 6. Эффекты частиц (Щепки)
         for(let i = particles.length - 1; i >= 0; i--) {
             let p = particles[i];
             p.x += p.vx; p.vy += 0.18; p.y += p.vy; p.alpha -= 0.022;
@@ -400,7 +445,6 @@
             ctx.fillRect(p.x, p.y + cameraOffsetY, p.size, p.size); ctx.restore();
         }
 
-        // 7. Летящий активный брус
         if (gameActive) {
             activeBlock.x += activeBlock.speed;
             if (activeBlock.speed > 0 && activeBlock.x + activeBlock.width >= canvas.width) {
@@ -424,6 +468,8 @@
     }
 
     resize();
+    // Инициализация топа при загрузке страницы
+    loadLeaderboard();
 </script>
 </body>
 </html>
